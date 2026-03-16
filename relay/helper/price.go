@@ -306,3 +306,67 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	info.PriceData = priceData
 	return priceData, nil
 }
+
+func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {
+	exprStr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
+	if !ok {
+		return types.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", info.OriginModelName)
+	}
+
+	estimatedCompletionTokens := 0
+	if meta.MaxTokens != 0 {
+		estimatedCompletionTokens = meta.MaxTokens
+	}
+
+	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+	if err != nil {
+		return types.PriceData{}, err
+	}
+
+	rawQuota, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
+		P: float64(promptTokens),
+		C: float64(estimatedCompletionTokens),
+	}, requestInput)
+	if err != nil {
+		return types.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
+	}
+
+	preConsumedQuota := billingexpr.QuotaRound(rawQuota * groupRatioInfo.GroupRatio)
+
+	freeModel := false
+	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+		if groupRatioInfo.GroupRatio == 0 || rawQuota == 0 {
+			preConsumedQuota = 0
+			freeModel = true
+		}
+	}
+
+	exprHash := billingexpr.ExprHashString(exprStr)
+	snapshot := &billingexpr.BillingSnapshot{
+		BillingMode:               billing_setting.BillingModeTieredExpr,
+		ModelName:                 info.OriginModelName,
+		ExprString:                exprStr,
+		ExprHash:                  exprHash,
+		GroupRatio:                groupRatioInfo.GroupRatio,
+		EstimatedPromptTokens:     promptTokens,
+		EstimatedCompletionTokens: estimatedCompletionTokens,
+		EstimatedQuotaBeforeGroup: rawQuota,
+		EstimatedQuotaAfterGroup:  preConsumedQuota,
+		EstimatedTier:             trace.MatchedTier,
+	}
+	info.TieredBillingSnapshot = snapshot
+	info.BillingRequestInput = &requestInput
+
+	priceData := types.PriceData{
+		FreeModel:         freeModel,
+		GroupRatioInfo:    groupRatioInfo,
+		QuotaToPreConsume: preConsumedQuota,
+	}
+
+	if common.DebugEnabled {
+		println(fmt.Sprintf("model_price_helper_tiered result: model=%s preConsume=%d rawQuota=%.2f groupRatio=%.2f tier=%s", info.OriginModelName, preConsumedQuota, rawQuota, groupRatioInfo.GroupRatio, trace.MatchedTier))
+	}
+
+	info.PriceData = priceData
+	return priceData, nil
+}
