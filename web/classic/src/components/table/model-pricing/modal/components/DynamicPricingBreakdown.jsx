@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Avatar, Tag, Table, Typography } from '@douyinfe/semi-ui';
+import { Card, Avatar, Tag, Table, Typography } from '@douyinfe/semi-ui';
 import { IconPriceTag } from '@douyinfe/semi-icons';
-import { parseTiersFromExpr, getCurrencyConfig } from '../../../../../helpers';
-import { BILLING_PRICING_VARS } from '../../../../../constants';
 import {
   splitBillingExprAndRequestRules,
   tryParseRequestRuleExpr,
@@ -35,6 +33,17 @@ import {
 } from '../../../../../pages/Setting/Ratio/components/requestRuleExpr';
 
 const { Text } = Typography;
+
+const PRICE_SUFFIX = '$/1M tokens';
+
+function unitCostToPrice(uc) {
+  return (Number(uc) || 0) * 2;
+}
+
+function formatPrice(uc) {
+  const p = unitCostToPrice(uc);
+  return p ? `$${p.toFixed(4)}` : '-';
+}
 
 const VAR_LABELS = { p: '输入', c: '输出' };
 const OP_LABELS = { '<': '<', '<=': '≤', '>': '>', '>=': '≥' };
@@ -62,6 +71,54 @@ function formatConditionSummary(conditions, t) {
     .join(' && ');
 }
 
+function tryParseTiers(baseExpr) {
+  if (!baseExpr) return null;
+  try {
+    const cacheVars = ['cr', 'cc', 'cc1h'];
+    const optCache = cacheVars.map((v) => `(?:\\s*\\+\\s*${v}\\s*\\*\\s*([\\d.eE+-]+))?`).join('');
+    const bodyPat = `p\\s*\\*\\s*([\\d.eE+-]+)\\s*\\+\\s*c\\s*\\*\\s*([\\d.eE+-]+)${optCache}`;
+    const singleRe = new RegExp(`^tier\\("([^"]*)",\\s*${bodyPat}\\)$`);
+    const simple = baseExpr.match(singleRe);
+    if (simple) {
+      return [{
+        label: simple[1],
+        conditions: [],
+        inputPrice: unitCostToPrice(Number(simple[2])),
+        outputPrice: unitCostToPrice(Number(simple[3])),
+        cacheReadPrice: simple[4] ? unitCostToPrice(Number(simple[4])) : null,
+        cacheCreatePrice: simple[5] ? unitCostToPrice(Number(simple[5])) : null,
+        cacheCreate1hPrice: simple[6] ? unitCostToPrice(Number(simple[6])) : null,
+      }];
+    }
+
+    const condGroup = `((?:(?:p|c)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)(?:\\s*&&\\s*(?:p|c)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`;
+    const tierRe = new RegExp(`(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*${bodyPat}\\)`, 'g');
+    const tiers = [];
+    let match;
+    while ((match = tierRe.exec(baseExpr)) !== null) {
+      const condStr = match[1] || '';
+      const conditions = [];
+      if (condStr) {
+        for (const cp of condStr.split(/\s*&&\s*/)) {
+          const cm = cp.trim().match(/^(p|c)\s*(<|<=|>|>=)\s*([\d.eE+]+)$/);
+          if (cm) conditions.push({ var: cm[1], op: cm[2], value: Number(cm[3]) });
+        }
+      }
+      tiers.push({
+        label: match[2],
+        conditions,
+        inputPrice: unitCostToPrice(Number(match[3])),
+        outputPrice: unitCostToPrice(Number(match[4])),
+        cacheReadPrice: match[5] ? unitCostToPrice(Number(match[5])) : null,
+        cacheCreatePrice: match[6] ? unitCostToPrice(Number(match[6])) : null,
+        cacheCreate1hPrice: match[7] ? unitCostToPrice(Number(match[7])) : null,
+      });
+    }
+    return tiers.length > 0 ? tiers : null;
+  } catch {
+    return null;
+  }
+}
 
 function describeCondition(cond, t) {
   if (cond.source === SOURCE_TIME) {
@@ -87,11 +144,10 @@ function describeGroup(group, t) {
 }
 
 export default function DynamicPricingBreakdown({ billingExpr, t }) {
-  const { symbol, rate } = getCurrencyConfig();
   const { billingExpr: baseExpr, requestRuleExpr: ruleExpr } =
     splitBillingExprAndRequestRules(billingExpr || '');
 
-  const tiers = parseTiersFromExpr(baseExpr);
+  const tiers = tryParseTiers(baseExpr);
   const ruleGroups = tryParseRequestRuleExpr(ruleExpr || '');
 
   const hasTiers = tiers && tiers.length > 0;
@@ -99,7 +155,7 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
 
   if (!hasTiers && !hasRules) {
     return (
-      <div>
+      <Card className='!rounded-2xl shadow-sm border-0'>
         <div className='flex items-center mb-3'>
           <Avatar size='small' color='amber' className='mr-2 shadow-md'>
             <IconPriceTag size={16} />
@@ -109,11 +165,9 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         <div className='text-sm text-gray-500'>
           <code style={{ fontSize: 12, wordBreak: 'break-all' }}>{billingExpr}</code>
         </div>
-      </div>
+      </Card>
     );
   }
-
-  const priceFields = BILLING_PRICING_VARS.map((v) => [v.field, v.shortLabel]);
 
   const tierColumns = [
     {
@@ -128,26 +182,59 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         </div>
       ),
     },
-    ...priceFields
-      .filter(([field]) => hasTiers && tiers.some((tier) => tier[field] > 0))
-      .map(([field, label]) => ({
-        title: `${t(label)} (${symbol}/1M tokens)`,
-        dataIndex: field,
-        render: (v) => v > 0 ? <Text strong>{`${symbol}${(v * rate).toFixed(4)}`}</Text> : '-',
-      })),
+    {
+      title: `${t('输入价格')} (${PRICE_SUFFIX})`,
+      dataIndex: 'inputPrice',
+      render: (v) => <Text strong>${v.toFixed(4)}</Text>,
+    },
+    {
+      title: `${t('输出价格')} (${PRICE_SUFFIX})`,
+      dataIndex: 'outputPrice',
+      render: (v) => <Text strong>${v.toFixed(4)}</Text>,
+    },
   ];
+
+  const hasCacheRead = hasTiers && tiers.some((tier) => tier.cacheReadPrice != null);
+  const hasCacheCreate = hasTiers && tiers.some((tier) => tier.cacheCreatePrice != null);
+  const hasCache1h = hasTiers && tiers.some((tier) => tier.cacheCreate1hPrice != null);
+
+  if (hasCacheRead) {
+    tierColumns.push({
+      title: `${t('缓存读取')} (${PRICE_SUFFIX})`,
+      dataIndex: 'cacheReadPrice',
+      render: (v) => v != null ? <Text>${v.toFixed(4)}</Text> : '-',
+    });
+  }
+  if (hasCacheCreate) {
+    tierColumns.push({
+      title: `${t('缓存创建')} (${PRICE_SUFFIX})`,
+      dataIndex: 'cacheCreatePrice',
+      render: (v) => v != null ? <Text>${v.toFixed(4)}</Text> : '-',
+    });
+  }
+  if (hasCache1h) {
+    tierColumns.push({
+      title: `${t('缓存创建-1h')} (${PRICE_SUFFIX})`,
+      dataIndex: 'cacheCreate1hPrice',
+      render: (v) => v != null ? <Text>${v.toFixed(4)}</Text> : '-',
+    });
+  }
 
   const tierData = hasTiers
     ? tiers.map((tier, i) => ({
         key: `tier-${i}`,
         label: tier.label,
         condSummary: formatConditionSummary(tier.conditions, t),
-        ...Object.fromEntries(priceFields.map(([field]) => [field, tier[field] || 0])),
+        inputPrice: tier.inputPrice,
+        outputPrice: tier.outputPrice,
+        cacheReadPrice: tier.cacheReadPrice,
+        cacheCreatePrice: tier.cacheCreatePrice,
+        cacheCreate1hPrice: tier.cacheCreate1hPrice,
       }))
     : [];
 
   return (
-    <div>
+    <Card className='!rounded-2xl shadow-sm border-0'>
       <div className='flex items-center mb-4'>
         <Avatar size='small' color='amber' className='mr-2 shadow-md'>
           <IconPriceTag size={16} />
@@ -201,6 +288,6 @@ export default function DynamicPricingBreakdown({ billingExpr, t }) {
         </div>
       )}
 
-    </div>
+    </Card>
   );
 }
