@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsWelfare from '../../pages/Setting/Operation/SettingsWelfare';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -81,6 +82,9 @@ const OperationSetting = () => {
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
+
+    /* 福利群设置 */
+    WelfareGroupQRCode: '',
   });
 
   let [loading, setLoading] = useState(false);
@@ -153,6 +157,10 @@ const OperationSetting = () => {
         {/* 签到设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsCheckin options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 福利群设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsWelfare options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

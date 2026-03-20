@@ -1,4 +1,4 @@
-FROM oven/bun:latest AS builder
+FROM oven/bun:1 AS builder
 
 WORKDIR /build
 COPY web/package.json .
@@ -19,6 +19,7 @@ ENV GOEXPERIMENT=greenteagc
 WORKDIR /build
 
 ADD go.mod go.sum ./
+ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 
 COPY . .

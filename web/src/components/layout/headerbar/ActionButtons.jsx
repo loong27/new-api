@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import NewYearButton from './NewYearButton';
+import WelfareButton from './WelfareButton';
 import NotificationButton from './NotificationButton';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
@@ -33,6 +34,7 @@ const ActionButtons = ({
   currentLang,
   onLanguageChange,
   userState,
+  statusState,
   isLoading,
   isMobile,
   isSelfUseMode,
@@ -43,6 +45,8 @@ const ActionButtons = ({
   return (
     <div className='flex items-center gap-2 md:gap-3'>
       <NewYearButton isNewYear={isNewYear} />
+
+      <WelfareButton userState={userState} statusState={statusState} isMobile={isMobile} />
 
       <NotificationButton
         unreadCount={unreadCount}
