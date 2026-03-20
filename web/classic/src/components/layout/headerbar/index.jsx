@@ -116,6 +116,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             currentLang={currentLang}
             onLanguageChange={handleLanguageChange}
             userState={userState}
+            statusState={statusState}
             isLoading={isLoading}
             isMobile={isMobile}
             isSelfUseMode={isSelfUseMode}
