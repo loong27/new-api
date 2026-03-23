@@ -15,9 +15,10 @@
 
 services:
   new-api:
-    build:
-      dockerfile: ./Dockerfile
-      context: .
+    image: kimloong/new-api:latest
+    #build:
+    #  dockerfile: ./Dockerfile
+    #  context: .
     env_file:
       - .env
     container_name: new-api
