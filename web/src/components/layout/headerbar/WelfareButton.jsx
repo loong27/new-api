@@ -67,11 +67,9 @@ const CopyIdButton = ({ userState, t }) => {
   );
 };
 
-/** 包含福利群 + 复制ID 两个独立按钮，仅登录后显示 */
+/** 包含福利群 + 复制ID 两个独立按钮 */
 const WelfareButtons = ({ userState, statusState, isMobile }) => {
   const { t } = useTranslation();
-  const isLoggedIn = !!userState?.user?.username;
-  if (!isLoggedIn) return null;
 
   const qrcodeUrl = statusState?.status?.welfare_group_qrcode || '';
 
